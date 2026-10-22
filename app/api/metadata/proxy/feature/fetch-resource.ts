@@ -1,9 +1,10 @@
-import { Agent } from 'undici';
+import { Agent, type Dispatcher } from 'undici';
 
 import { err, ok, type Result } from '@/app/shared/lib/result';
 
 import { matchAbortError, matchMaxSizeError, matchTimeoutError, type StatusError, statusError } from './errors';
 import { isHTTPProtocol, lookupHostnameSafely } from './ip';
+import { BrotliRejectedError, rejectBrotli } from './lib/reject-brotli';
 import { isPassthroughStatus, toProxyStatus } from './lib/upstream-status';
 import { processBinary, processJson, processTextAsJson } from './processors';
 import { BodyShapeError, discardBody, readBodyWithLimit } from './read-body-with-limit';
@@ -92,9 +93,9 @@ async function executeHop(url: URL, request: FetchRequest): Promise<Result<HopRe
     // Dispatcher ownership lives here, not inside doFetch — closing it must
     // happen *after* processResponse has drained the response body, otherwise
     // we'd be tearing down sockets while the body stream is still being read.
-    const dispatcher = new Agent({ connect: { lookup: validation.lookup } });
+    const agent = new Agent({ connect: { lookup: validation.lookup } });
     try {
-        const [fetchError, response] = await doFetch(url, request, dispatcher);
+        const [fetchError, response] = await doFetch(url, request, agent.compose(rejectBrotli));
         if (fetchError) return err(fetchError);
 
         if (isRedirect(response)) {
@@ -116,7 +117,7 @@ async function executeHop(url: URL, request: FetchRequest): Promise<Result<HopRe
         // remaining in-flight stream to settle and is preferred over
         // `destroy()`; swallowing the rejection avoids masking an upstream
         // error with a cleanup error.
-        await dispatcher.close().catch(() => undefined);
+        await agent.close().catch(() => undefined);
     }
 }
 
@@ -164,7 +165,11 @@ function extractRedirect(response: Response, url: URL): Result<HopResult, Status
     return ok({ kind: 'redirect', location });
 }
 
-async function doFetch(url: URL, request: FetchRequest, dispatcher: Agent): Promise<Result<Response, StatusError>> {
+async function doFetch(
+    url: URL,
+    request: FetchRequest,
+    dispatcher: Dispatcher,
+): Promise<Result<Response, StatusError>> {
     try {
         return ok(
             await fetch(url.href, {
@@ -250,6 +255,13 @@ function pickProcessor(contentType: string | null) {
 function classifyFetchError(e: unknown, url: URL): StatusError {
     const error = e instanceof Error ? e : new Error('Cannot fetch resource', { cause: e });
 
+    if (error.cause instanceof BrotliRejectedError) {
+        return statusError(415, 'Upstream used Brotli content-encoding', {
+            cause: error,
+            code: 'unsupported-encoding',
+            context: { url: url.href },
+        });
+    }
     if (matchTimeoutError(error)) {
         return statusError(504, 'Upstream fetch timed out', {
             cause: error,

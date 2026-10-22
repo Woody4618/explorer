@@ -72,6 +72,7 @@ describe('logProxyError', () => {
         'unlisted-upstream-status': true,
         unreachable: true,
         'unsupported-content-type': true,
+        'unsupported-encoding': true,
         'upstream-status': true,
     } satisfies Record<ThirdPartyCode, true>;
 

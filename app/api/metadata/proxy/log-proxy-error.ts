@@ -29,6 +29,7 @@ const LOG_POLICY: Record<ProxyErrorCode, LogPolicy> = {
     'unlisted-upstream-status': { level: 'warn', message: 'Unlisted upstream status' },
     unreachable: { level: 'warn', message: 'Fetch failed', sentry: true },
     'unsupported-content-type': { level: 'debug' },
+    'unsupported-encoding': { level: 'warn', message: 'Upstream used Brotli content-encoding' },
     'upstream-status': { level: 'warn', message: 'Upstream returned error' },
 };
 

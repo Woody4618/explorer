@@ -7,6 +7,7 @@ import { unwrap } from '@/app/shared/lib/result';
 
 import { type FetchRequest, fetchResource } from '../feature';
 import { lookupHostnameSafely } from '../feature/ip';
+import { BrotliRejectedError } from '../feature/lib/reject-brotli';
 
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
@@ -131,6 +132,12 @@ describe('fetchResource', () => {
         mockRejectOnce(error);
 
         expect(await fetchError()).toMatchObject({ code, status: 504 });
+    });
+
+    it('should map a Brotli rejection from the dispatcher to a 415 instead of an unreachable upstream', async () => {
+        mockRejectOnce(new TypeError('fetch failed', { cause: new BrotliRejectedError() }));
+
+        expect(await fetchError()).toMatchObject({ code: 'unsupported-encoding', status: 415 });
     });
 
     it('should treat an unexpected fetch rejection as an unreachable upstream (502)', async () => {

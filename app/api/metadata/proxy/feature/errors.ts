@@ -15,6 +15,7 @@ export type ProxyErrorCode =
     | 'unlisted-upstream-status'
     | 'unreachable'
     | 'unsupported-content-type'
+    | 'unsupported-encoding'
     | 'upstream-status';
 
 type StatusErrorOptions = ErrorOptions & {
